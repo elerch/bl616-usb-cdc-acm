@@ -1,7 +1,9 @@
-# usbd_cdc_acm
+Based on usbd_cdc_acm in the Bouffalo Labs sdk example
+======================================================
 
 
-## Support CHIP
+Supported Chips
+---------------
 
 |      CHIP        | Remark |
 |:----------------:|:------:|
@@ -9,7 +11,14 @@
 |BL616/BL618       |        |
 |BL808             |   D0 has no irq     |
 
-## Compile
+Compile (note that BL616 is all that's tested)
+----------------------------------------------
+
+- BL616/BL618
+
+```
+docker run --rm -t -v $(pwd):/build git.lerch.org/lobo/bouffalo_open_sdk:2f6477f BOARD=bl616dk CHIP=bl616
+```
 
 - BL702/BL704/BL706
 
@@ -17,11 +26,6 @@
 make CHIP=bl702 BOARD=bl702dk
 ```
 
-- BL616/BL618
-
-```
-make CHIP=bl616 BOARD=bl616dk
-```
 
 - BL808
 
@@ -30,8 +34,8 @@ make CHIP=bl808 BOARD=bl808dk CPU_ID=m0
 make CHIP=bl808 BOARD=bl808dk CPU_ID=d0
 ```
 
-## Flash
-
+Flash
+-----
 ```
-make flash CHIP=chip_name COMX=xxx # xxx is your com name
+docker run --rm --device /dev/ttyACM0 -v $(pwd):/build git.lerch.org/lobo/bouffalo_open_sdk:2f6477f flash BOARD=bl616dk CHIP=bl616 COMX=/dev/ttyACM0
 ```
