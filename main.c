@@ -7,6 +7,7 @@
 
 extern void cdc_acm_init(void);
 extern void cdc_acm_data_send_with_dtr(const uint8_t *, uint32_t);
+extern void log(const char *);
 
 uint32_t buffer_init(char *);
 
@@ -17,10 +18,17 @@ int main(void)
     board_init();
     uint32_t data_len = buffer_init("Hello world!\r\n");
 
+    uint32_t inx = 0;
     cdc_acm_init();
+    log("Initialized"); 
     while (1) {
-        cdc_acm_data_send_with_dtr(write_buffer_main, data_len);
-        bflb_mtimer_delay_ms(2000);
+        if (inx++ >= 2000){
+          cdc_acm_data_send_with_dtr(write_buffer_main, data_len);
+          log("dtr_enabled_true_callbacks:  . Write\r\n");
+          /* cdc_acm_log_with_dtr(write_buffer_main, data_len); */
+          inx = 0;
+        }
+        bflb_mtimer_delay_ms(1);
     }
 }
 

@@ -39,3 +39,9 @@ Flash
 ```
 docker run --rm --device /dev/ttyACM0 -v $(pwd):/build git.lerch.org/lobo/bouffalo_open_sdk:2f6477f flash BOARD=bl616dk CHIP=bl616 COMX=/dev/ttyACM0
 ```
+
+With rootless podman:
+
+```
+podman run --annotation run.oci.keep_original_groups=1 --userns=keep-id --rm --device /dev/ttyACM0 -v $(pwd):/build git.lerch.org/lobo/bouffalo_open_sdk:2f6477f flash BOARD=bl616dk CHIP=bl616 COMX=/dev/ttyACM0
+```
