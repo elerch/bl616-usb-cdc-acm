@@ -15,21 +15,21 @@ USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX uint8_t write_buffer_main[2048];
 
 int main(void)
 {
-    board_init();
-    uint32_t data_len = buffer_init("Hello world!\r\n");
+  board_init();
+  uint32_t data_len = buffer_init("Hello world!\r\n");
 
-    uint32_t inx = 0;
-    cdc_acm_init();
-    log("Initialized"); 
-    while (1) {
-        if (inx++ >= 2000){
-          cdc_acm_data_send_with_dtr(write_buffer_main, data_len);
-          log("dtr_enabled_true_callbacks:  . Write\r\n");
-          /* cdc_acm_log_with_dtr(write_buffer_main, data_len); */
-          inx = 0;
-        }
-        bflb_mtimer_delay_ms(1);
+  uint32_t inx = 0;
+  cdc_acm_init();
+  log("Initialized"); 
+  while (1) {
+    if (inx++ >= 2000){
+      cdc_acm_data_send_with_dtr(write_buffer_main, data_len);
+      log("dtr_enabled_true_callbacks:  . Write\r\n");
+      /* cdc_acm_log_with_dtr(write_buffer_main, data_len); */
+      inx = 0;
     }
+    bflb_mtimer_delay_ms(1);
+  }
 }
 
 uint32_t buffer_init(char *data) {
