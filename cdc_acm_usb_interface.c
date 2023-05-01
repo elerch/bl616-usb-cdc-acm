@@ -1,5 +1,6 @@
 #include "usbd_core.h"
 #include "usbd_cdc.h"
+#include "bflb_mtimer.h"
 #include <stdarg.h>
 /*!< endpoint address */
 /* Transmissions Device->Host (otherwise known as "IN" in these constants */
@@ -191,6 +192,8 @@ volatile uint32_t debug_val32_2 = 0;
 #define CDC_MAX_MPS 64
 #endif
 
+void debuglog(const char *, ...);
+
 void usbd_configure_done_callback(void)
 {
   /* setup first out ep read transfer */
@@ -202,6 +205,7 @@ void usbd_cdc_acm_bulk_out(uint8_t ep, uint32_t nbytes)
 {
   debug_val_1 = ep; debug_val32_1 = nbytes;
   USB_LOG_RAW("actual out len:%d\r\n", nbytes);
+  debuglog("Bytes received from host. actual out len:%d\r\n", nbytes);
 
   /* setup next out ep read transfer */
   usbd_ep_start_read(ep, read_buffer, BUFFER_SIZE);
@@ -296,14 +300,13 @@ void usbd_cdc_acm_set_dtr(uint8_t intf, bool dtr)
     }
   }
 }
-uint32_t out_inx = 0;
 bool is_color = true;
 
 int prefix(bool is_debug, uint8_t lvl, uint8_t *buffer) {
   if (!is_debug) return 0;
   int len = 0;
   if (is_color) {
-    len = sprintf((char *)buffer, "\033[32m%d:\033[00m ", out_inx++);
+    len = sprintf((char *)buffer, "\033[32m[%.3f]:\033[00m ", bflb_mtimer_get_time_ms() / 1000.00);
     memcpy(buffer + len, "\033[", 5);
     switch (lvl) {
       case LVL_NORMAL:
@@ -318,7 +321,7 @@ int prefix(bool is_debug, uint8_t lvl, uint8_t *buffer) {
     }
     len += 8;
   }else{
-    len = sprintf((char *)buffer, "%d: ", out_inx++);
+    len = sprintf((char *)buffer, "[%.3f]: ", bflb_mtimer_get_time_ms() / 1000.00);
   }
 
   return len;
