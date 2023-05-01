@@ -1,6 +1,6 @@
 #include "usbd_core.h"
 #include "usbd_cdc.h"
-
+#include <stdarg.h>
 /*!< endpoint address */
 /* Transmissions Device->Host (otherwise known as "IN" in these constants */
 /* Need to be >= 0x80 to be considered a transmission. See                */
@@ -29,6 +29,10 @@
 #define USBD_PID           0xDEAD /* Product Id */
 #define USBD_MAX_POWER     100
 #define USBD_LANGID_STRING 1033   /* US English */
+
+#define LVL_NORMAL 0x00
+#define LVL_WARN   0x01
+#define LVL_ERROR  0x02
 
 /*!< config descriptor size */
 #define USB_CONFIG_SIZE (9 + CDC_ACM_DESCRIPTOR_LEN * 2)
@@ -166,9 +170,11 @@ static const uint8_t cdc_descriptor[] = {
   0x00
 };
 
-USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX uint8_t read_buffer[2048];
-USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX uint8_t write_buffer[2048];
-USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX uint8_t debug_buffer[2048];
+#define BUFFER_SIZE 2048
+
+USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX uint8_t read_buffer[BUFFER_SIZE];
+USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX uint8_t write_buffer[BUFFER_SIZE];
+USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX uint8_t debug_buffer[BUFFER_SIZE];
 
 volatile bool ep_tx_busy_flag = false;
 volatile bool ep_dbg_tx_busy_flag = false;
@@ -188,8 +194,8 @@ volatile uint32_t debug_val32_2 = 0;
 void usbd_configure_done_callback(void)
 {
   /* setup first out ep read transfer */
-  usbd_ep_start_read(CDC_OUT_EP, read_buffer, 2048);
-  usbd_ep_start_read(CDC_OUT_DBG_EP, read_buffer, 2048);
+  usbd_ep_start_read(CDC_OUT_EP, read_buffer, BUFFER_SIZE);
+  usbd_ep_start_read(CDC_OUT_DBG_EP, read_buffer, BUFFER_SIZE);
 }
 
 void usbd_cdc_acm_bulk_out(uint8_t ep, uint32_t nbytes)
@@ -198,7 +204,7 @@ void usbd_cdc_acm_bulk_out(uint8_t ep, uint32_t nbytes)
   USB_LOG_RAW("actual out len:%d\r\n", nbytes);
 
   /* setup next out ep read transfer */
-  usbd_ep_start_read(ep, read_buffer, 2048);
+  usbd_ep_start_read(ep, read_buffer, BUFFER_SIZE);
 }
 
 void usbd_cdc_acm_bulk_in(uint8_t ep, uint32_t nbytes)
@@ -267,7 +273,7 @@ void cdc_acm_init(void)
 }
 
 volatile uint8_t dtr_enable = 0;
-volatile uint8_t dtr_debug_enable = 0;
+volatile uint8_t dtr_dbg_enable = 0;
 
 /************************************************
  * Callback function from the host based on
@@ -280,61 +286,101 @@ void usbd_cdc_acm_set_dtr(uint8_t intf, bool dtr)
     if (intf == 0) {
       dtr_enable = 1;
     } else {
-      dtr_debug_enable = 1;
+      dtr_dbg_enable = 1;
     }
   } else {
     if (intf == 0) {
       dtr_enable = 0;
     } else {
-      dtr_debug_enable = 0;
+      dtr_dbg_enable = 0;
     }
   }
 }
-
-void cdc_acm_data_send_with_dtr(const uint8_t *data, uint32_t data_len )
-{
-  if (dtr_enable) {
-    ep_tx_busy_flag = true;
-    usbd_ep_start_write(CDC_IN_EP, data, data_len);
-    while (ep_tx_busy_flag) {
-    }
-  }
-}
-
-void cdc_acm_log_with_dtr(const uint8_t *data, uint32_t data_len )
-{
-  if (dtr_debug_enable) {
-    ep_dbg_tx_busy_flag = true;
-    usbd_ep_start_write(CDC_IN_DBG_EP, data, data_len);
-    while (ep_dbg_tx_busy_flag) {
-    }
-  }
-}
-
 uint32_t out_inx = 0;
-void log(const char *data){
-  int len = snprintf(
-    (char *)&write_buffer[0],
-    2048,
-    "%d\r\ndebug u8 val 1: %d, debug val u8 2: %d\r\ndebug 32 val 1: %d, debug 32 val 2: %d\r\nsending to debug...\r\n",
-    out_inx++,
-    debug_val_1,
-    debug_val_2,
-    debug_val32_1,
-    debug_val32_2
-    );
-  cdc_acm_data_send_with_dtr(&write_buffer[0], len);
+bool is_color = true;
 
+int prefix(bool is_debug, uint8_t lvl, uint8_t *buffer) {
+  if (!is_debug) return 0;
+  int len = 0;
+  if (is_color) {
+    len = sprintf((char *)buffer, "\033[32m%d:\033[00m ", out_inx++);
+    memcpy(buffer + len, "\033[", 5);
+    switch (lvl) {
+      case LVL_NORMAL:
+        memcpy(buffer + len + 5, "00m", 3);
+        break;
+      case LVL_WARN:
+        memcpy(buffer + len + 5, "33m", 3);
+        break;
+      case LVL_ERROR:
+        memcpy(buffer + len + 5, "31m", 3);
+        break;
+    }
+    len += 8;
+  }else{
+    len = sprintf((char *)buffer, "%d: ", out_inx++);
+  }
 
-  int dbg_len = snprintf(
-    (char *)&debug_buffer[0],
-    2048,
-    "%d\r\ndebug u8 val 1: %d, debug val u8 2: %d\r\ndebug 32 val 1: %d, debug 32 val 2: %d\r\n(debug log)\r\n",
-    out_inx,
-    debug_val_1,
-    debug_val_2,
-    debug_val32_1,
-    debug_val32_2
-    );
-  cdc_acm_log_with_dtr(&debug_buffer[0], dbg_len);
+  return len;
 }
+
+int suffix(bool is_debug, uint8_t lvl, uint8_t *buffer, size_t len) {
+  if (!is_debug) return len;
+  if (!is_color) return len;
+  memcpy(buffer + len, "\033[00m", 8);
+  return len + 8;
+}
+void nprintf(uint8_t lvl, const uint8_t ep,  const char *fmt, va_list ap) {
+  /* If DTR is not enabled for the desired interface, bail early */
+  if (ep == CDC_IN_EP && !dtr_enable) return;
+  if (ep == CDC_IN_DBG_EP && !dtr_dbg_enable) return; // TODO: buffer messages?
+
+  size_t max_len = BUFFER_SIZE;
+  uint8_t *buffer = NULL;
+  // 8 chars on either side
+  if (ep == CDC_IN_EP) {
+    buffer = &write_buffer[0];
+    ep_tx_busy_flag = true;
+  } else {
+    buffer = &debug_buffer[0];
+    ep_dbg_tx_busy_flag = true;
+    // TODO: Add debug prefix to buffer here...
+  }
+  int len = prefix(ep == CDC_IN_DBG_EP, lvl, buffer);
+  len += vsnprintf(
+    (char *)buffer + len,
+    max_len - len,
+    fmt,
+    ap
+    );
+  len = suffix(ep == CDC_IN_DBG_EP, lvl, buffer, len);
+  usbd_ep_start_write(ep, buffer, len);
+}
+
+void output(const char *fmt, ...) {
+  va_list args;
+  va_start (args, fmt);
+  nprintf(LVL_NORMAL, CDC_IN_EP, fmt, args);
+  va_end(args);
+}
+
+void debuglog(const char *fmt, ...) {
+  va_list args;
+  va_start (args, fmt);
+  nprintf(LVL_NORMAL, CDC_IN_DBG_EP, fmt, args);
+  va_end(args);
+}
+
+void debugwarn(const char *fmt, ...) {
+  va_list args;
+  va_start (args, fmt);
+  nprintf(LVL_WARN, CDC_IN_DBG_EP, fmt, args);
+  va_end(args);
+}
+void debugerror(const char *fmt, ...) {
+  va_list args;
+  va_start (args, fmt);
+  nprintf(LVL_ERROR, CDC_IN_DBG_EP, fmt, args);
+  va_end(args);
+}
+
