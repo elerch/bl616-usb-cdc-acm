@@ -180,11 +180,8 @@ USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX uint8_t debug_buffer[BUFFER_SIZE];
 volatile bool ep_tx_busy_flag = false;
 volatile bool ep_dbg_tx_busy_flag = false;
 
-// TODO: Remove these. Debugging only
-volatile uint8_t debug_val_1 = 0;
-volatile uint8_t debug_val_2 = 0;
-volatile uint32_t debug_val32_1 = 0;
-volatile uint32_t debug_val32_2 = 0;
+void (*data_received_ptr)(uint32_t, uint8_t *) = NULL;
+void (*dtr_changed_ptr)(bool);
 
 #ifdef CONFIG_USB_HS
 #define CDC_MAX_MPS 512
@@ -203,9 +200,10 @@ void usbd_configure_done_callback(void)
 
 void usbd_cdc_acm_bulk_out(uint8_t ep, uint32_t nbytes)
 {
-  debug_val_1 = ep; debug_val32_1 = nbytes;
   USB_LOG_RAW("actual out len:%d\r\n", nbytes);
   debuglog("Bytes received from host. actual out len:%d\r\n", nbytes);
+
+  if (data_received_ptr != NULL) (*data_received_ptr)(nbytes, read_buffer);
 
   /* setup next out ep read transfer */
   usbd_ep_start_read(ep, read_buffer, BUFFER_SIZE);
@@ -213,7 +211,6 @@ void usbd_cdc_acm_bulk_out(uint8_t ep, uint32_t nbytes)
 
 void usbd_cdc_acm_bulk_in(uint8_t ep, uint32_t nbytes)
 {
-  debug_val_2 = ep; debug_val32_2 = nbytes;
   USB_LOG_RAW("actual in len:%d\r\n", nbytes);
 
   if ((nbytes % CDC_MAX_MPS) == 0 && nbytes) {
@@ -287,13 +284,17 @@ void usbd_cdc_acm_set_dtr(uint8_t intf, bool dtr)
 {
   /* Based on above init, intf = 0 is normal, intf = 2 is debug */
   if (dtr) {
+    debuglog("Data terminal ready (DTR enabled) on intf: %d\r\n", intf);
     if (intf == 0) {
       dtr_enable = 1;
+      if (dtr_changed_ptr != NULL) { (*dtr_changed_ptr)(dtr); }
     } else {
       dtr_dbg_enable = 1;
     }
   } else {
+    debuglog("DTR disabled on intf: %d\r\n", intf);
     if (intf == 0) {
+      if (dtr_changed_ptr != NULL) { (*dtr_changed_ptr)(dtr); }
       dtr_enable = 0;
     } else {
       dtr_dbg_enable = 0;
@@ -347,7 +348,6 @@ void nprintf(uint8_t lvl, const uint8_t ep,  const char *fmt, va_list ap) {
   } else {
     buffer = &debug_buffer[0];
     ep_dbg_tx_busy_flag = true;
-    // TODO: Add debug prefix to buffer here...
   }
   int len = prefix(ep == CDC_IN_DBG_EP, lvl, buffer);
   len += vsnprintf(
@@ -358,6 +358,19 @@ void nprintf(uint8_t lvl, const uint8_t ep,  const char *fmt, va_list ap) {
     );
   len = suffix(ep == CDC_IN_DBG_EP, lvl, buffer, len);
   usbd_ep_start_write(ep, buffer, len);
+  if (ep == CDC_IN_EP) {
+    //while (ep_tx_busy_flag) {}
+  }else {
+    //while (ep_dbg_tx_busy_flag) {}
+  }
+}
+
+void raw_output(size_t len, uint8_t *data) {
+  if (!dtr_enable) return;
+
+  ep_tx_busy_flag = true;
+  usbd_ep_start_write(CDC_IN_EP, data, len);
+  //while (ep_dbg_tx_busy_flag) {}
 }
 
 void output(const char *fmt, ...) {
